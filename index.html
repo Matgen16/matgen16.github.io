@@ -51,7 +51,7 @@
 <div id="cameraPrompt" style="display:none;">
   <button id="enableCamera">Allow Motion Access</button>
   <div id="status">Tap to begin…</div>
-  <span>v1.02</span>
+  <span>v1.03</span>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -137,6 +137,7 @@
 
     return q;
   }
+
   function handleOrientation(e) {
     if (e.alpha === null) return;
 
@@ -155,19 +156,16 @@
     const relativeQ = new THREE.Quaternion();
     relativeQ.copy(initialQuaternion).invert().multiply(deviceQ);
 
-    // Convert to Euler for pitch/yaw manipulation
+    // Convert to Euler (YXZ order)
     const euler = new THREE.Euler().setFromQuaternion(relativeQ, 'YXZ');
 
-    // Fix left/right inversion
-    euler.y = -euler.y; // invert yaw
+    // Keep yaw and pitch correct
+    const yaw = euler.y;   // left/right
+    const pitch = -euler.x; // flip pitch if needed
 
-    // Flip pitch if desired
-    euler.x = -euler.x;
+    // Remove roll completely
+    euler.set(pitch, yaw, 0, 'YXZ');
 
-    // Remove roll
-    euler.z = 0;
-
-    // Apply to camera
     cameraQuaternion.setFromEuler(euler);
   }
 
