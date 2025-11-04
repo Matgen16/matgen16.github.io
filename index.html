@@ -51,7 +51,7 @@
 <div id="cameraPrompt" style="display:none;">
   <button id="enableCamera">Allow Motion Access</button>
   <div id="status">Tap to begin…</div>
-  <span>v1.01</span>
+  <span>v1.02</span>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -137,7 +137,6 @@
 
     return q;
   }
-
   function handleOrientation(e) {
     if (e.alpha === null) return;
 
@@ -152,24 +151,26 @@
       return;
     }
 
-    // Calculate relative rotation from initial position
+    // Relative rotation
     const relativeQ = new THREE.Quaternion();
     relativeQ.copy(initialQuaternion).invert().multiply(deviceQ);
 
-    // Convert to Euler angles
-    const euler = new THREE.Euler().setFromQuaternion(relativeQ, 'YXZ'); // 'YXZ' is standard for device orientation
-    const originalYaw = euler.y;
-    const originalPitch = euler.x;
-    const originalRoll = euler.z;
+    // Convert to Euler for pitch/yaw manipulation
+    const euler = new THREE.Euler().setFromQuaternion(relativeQ, 'YXZ');
 
-    // Swap yaw and roll, flip pitch
-    euler.y = originalRoll;       // yaw = roll
-    euler.z = originalYaw;        // roll = yaw
-    euler.x = -originalPitch;     // flip pitch
+    // Fix left/right inversion
+    euler.y = -euler.y; // invert yaw
 
-    // Convert back to quaternion
+    // Flip pitch if desired
+    euler.x = -euler.x;
+
+    // Remove roll
+    euler.z = 0;
+
+    // Apply to camera
     cameraQuaternion.setFromEuler(euler);
   }
+
 
   function initThreeJS(){
     scene = new THREE.Scene();
