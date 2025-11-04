@@ -51,7 +51,7 @@
 <div id="cameraPrompt" style="display:none;">
   <button id="enableCamera">Allow Motion Access</button>
   <div id="status">Tap to begin…</div>
-  <span>v1.58</span>
+  <span>v1.59</span>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -143,19 +143,19 @@
     const orient = (screen.orientation && screen.orientation.angle) || (window.orientation !== undefined ? window.orientation : 0);
     const deviceQ = getDeviceQuaternion(e.alpha, e.beta, e.gamma, orient);
 
-  if (!initialQuaternion) {
+    if (!initialQuaternion) {
       initialQuaternion = deviceQ.clone();
-      
-      // Set initial orientation: look 90° upward, no yaw/roll
-      const startEuler = new THREE.Euler(
-        THREE.MathUtils.degToRad(90), // pitch up
-        0,                            // yaw
-        0,                            // roll
-        'YXZ'
-      );
-      cameraQuaternion.setFromEuler(startEuler);
+
+      // Offset baseline so +X (east/north) is forward, parallel to ground
+      const forwardOffset = new THREE.Quaternion()
+        .setFromAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 2); // rotate -90° around Y
+      const levelOffset = new THREE.Quaternion()
+        .setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2); // pitch down 90° to be level
+
+      cameraQuaternion.copy(levelOffset).multiply(forwardOffset);
       return;
     }
+
 
     const relativeQ = new THREE.Quaternion();
     relativeQ.copy(initialQuaternion).invert().multiply(deviceQ);
