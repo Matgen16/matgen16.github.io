@@ -51,7 +51,7 @@
 <div id="cameraPrompt" style="display:none;">
   <button id="enableCamera">Allow Motion Access</button>
   <div id="status">Tap to begin…</div>
-  <span>v1.57</span>
+  <span>v1.58</span>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -143,14 +143,17 @@
     const orient = (screen.orientation && screen.orientation.angle) || (window.orientation !== undefined ? window.orientation : 0);
     const deviceQ = getDeviceQuaternion(e.alpha, e.beta, e.gamma, orient);
 
-    if (!initialQuaternion) {
+  if (!initialQuaternion) {
+      initialQuaternion = deviceQ.clone();
+      
+      // Set initial orientation: look 90° upward, no yaw/roll
       const startEuler = new THREE.Euler(
         THREE.MathUtils.degToRad(90), // pitch up
         0,                            // yaw
         0,                            // roll
         'YXZ'
       );
-      cameraQuaternion.identity();
+      cameraQuaternion.setFromEuler(startEuler);
       return;
     }
 
