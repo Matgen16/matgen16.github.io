@@ -51,7 +51,7 @@
 <div id="cameraPrompt" style="display:none;">
   <button id="enableCamera">Allow Motion Access</button>
   <div id="status">Tap to begin…</div>
-  <span>v1.04</span>
+  <span>v1.05</span>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -140,10 +140,7 @@
 
   function handleOrientation(e) {
     if (e.alpha === null) return;
-
-    const orient = (screen.orientation && screen.orientation.angle) ||
-                  (window.orientation !== undefined ? window.orientation : 0);
-
+    const orient = (screen.orientation && screen.orientation.angle) || (window.orientation !== undefined ? window.orientation : 0);
     const deviceQ = getDeviceQuaternion(e.alpha, e.beta, e.gamma, orient);
 
     if (!initialQuaternion) {
@@ -152,23 +149,15 @@
       return;
     }
 
-    // Relative rotation
     const relativeQ = new THREE.Quaternion();
     relativeQ.copy(initialQuaternion).invert().multiply(deviceQ);
 
-    // Extract forward direction
-    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(relativeQ);
-
-    // Compute yaw from forward vector (ignoring roll)
-    const yaw = Math.atan2(forward.x, -forward.z);
-
-    // Compute pitch from forward vector
-    const pitch = Math.asin(THREE.MathUtils.clamp(forward.y, -1, 1));
-
-    // Create quaternion from pitch + yaw only
-    cameraQuaternion.setFromEuler(new THREE.Euler(-pitch, yaw, 0, 'YXZ'));
+    const euler = new THREE.Euler().setFromQuaternion(relativeQ, 'YXZ');
+    euler.y = euler.z;   // yaw = roll
+    euler.z = 0;   // roll = yaw
+    euler.x = -euler.x;   // flip pitch
+    cameraQuaternion.setFromEuler(euler);
   }
-
 
   function initThreeJS(){
     scene = new THREE.Scene();
