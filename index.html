@@ -153,7 +153,7 @@
     relativeQ.copy(initialQuaternion).invert().multiply(deviceQ);
 
     const euler = new THREE.Euler().setFromQuaternion(relativeQ, 'YXZ');
-    euler.y = euler.z;   // yaw = roll
+    euler.y = -euler.z;   // yaw = roll
     euler.z = 0;   // roll = yaw
     euler.x = -euler.x;   // flip pitch
     cameraQuaternion.setFromEuler(euler);
