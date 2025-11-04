@@ -139,7 +139,10 @@
 
   function handleOrientation(e) {
     if (e.alpha === null) return;
-    const orient = (screen.orientation && screen.orientation.angle) || (window.orientation !== undefined ? window.orientation : 0);
+
+    const orient = (screen.orientation && screen.orientation.angle) ||
+                  (window.orientation !== undefined ? window.orientation : 0);
+
     const deviceQ = getDeviceQuaternion(e.alpha, e.beta, e.gamma, orient);
 
     if (!initialQuaternion) {
@@ -148,13 +151,22 @@
       return;
     }
 
+    // Calculate relative rotation from initial position
     const relativeQ = new THREE.Quaternion();
     relativeQ.copy(initialQuaternion).invert().multiply(deviceQ);
 
-    const euler = new THREE.Euler().setFromQuaternion(relativeQ, 'YXZ');
-    euler.y = -euler.z;   // yaw = roll
-    euler.z = -euler.y;   // roll = yaw
-    euler.x = -euler.x;   // flip pitch
+    // Convert to Euler angles
+    const euler = new THREE.Euler().setFromQuaternion(relativeQ, 'YXZ'); // 'YXZ' is standard for device orientation
+    const originalYaw = euler.y;
+    const originalPitch = euler.x;
+    const originalRoll = euler.z;
+
+    // Swap yaw and roll, flip pitch
+    euler.y = originalRoll;       // yaw = roll
+    euler.z = originalYaw;        // roll = yaw
+    euler.x = -originalPitch;     // flip pitch
+
+    // Convert back to quaternion
     cameraQuaternion.setFromEuler(euler);
   }
 
