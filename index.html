@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>VR Look</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <style>
+    html, body {
+      margin:0; 
+      padding:0; 
+      width:100%; 
+      height:100%; 
+      overflow:hidden; 
+      background:#000; 
+      color:#fff; 
+      font-family:Arial,Helvetica,sans-serif;
+    }
+    canvas {
+      display:block;
+      width:100%;
+      height:100%;
+    }
+    #loading, #cameraPrompt{
+      position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+      font-size:1.2rem;padding:1rem 2rem;background:rgba(0,0,0,0.9);border-radius:12px;
+      text-align:center;z-index:100;max-width:90%;
+    }
+    button{
+      background:#007AFF;color:white;border:none;padding:10px 16px;
+      border-radius:8px;font-size:1rem;margin-top:10px;cursor:pointer;
+    }
+    button:active{transform:scale(0.98);}
+    #status{font-size:0.8rem;margin-top:8px;color:#0f0;}
+  </style>
+  <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#000000">
+    <script>
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('./service-worker.js')
+        .then(reg => console.log('Service worker registered', reg))
+        .catch(err => console.log('Service worker failed', err));
+    }
+   </script>
+</head>
+<body>
+<div id="loading">
+  <div>Loading Three.js…</div>
+  <div style="font-size:0.8rem;margin-top:8px;">(If stuck, refresh)</div>
+</div>
+
+<div id="cameraPrompt" style="display:none;">
+  <button id="enableCamera">Allow Motion Access</button>
+  <div id="status">Tap to begin…</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+  /* ---------- GLOBALS ---------- */
+  let scene, renderer, player, leftEye, rightEye;
+  const IPD = 0.06;
+  let cameraQuaternion = new THREE.Quaternion();
+  let initialQuaternion = null;
+
+  const loadingEl   = document.getElementById('loading');
+  const cameraPrompt= document.getElementById('cameraPrompt');
+  const enableBtn   = document.getElementById('enableCamera');
+  const statusEl    = document.getElementById('status');
+
+  function updateStatus(msg){ statusEl.textContent = msg; console.log(msg); }
+
+  function checkReady(){
+    if(typeof THREE!=='undefined'){
+      loadingEl.remove();
+      cameraPrompt.style.display='block';
+      tryStartSensors();
+    }else setTimeout(checkReady,100);
+  }
+
+  async function goFullscreen(){
+    try{ await document.documentElement.requestFullscreen(); }catch(e){};
+  }
+
+  async function lockToLandscape(){
+    if(screen.orientation){
+      try{ await screen.orientation.lock('landscape'); }
+      catch(e){ console.log('orientation lock failed',e); }
+    }
+  }
+
+  function tryStartSensors(){
+    if(window.DeviceOrientationEvent){
+      const requestPermission = async ()=>{
+        try{
+          const resp = await DeviceOrientationEvent.requestPermission();
+          if(resp==='granted') await startSensors();
+          else updateStatus('Motion denied');
+        }catch{ updateStatus('Permission error'); }
+      };
+      if(typeof DeviceOrientationEvent.requestPermission==='function'){
+        enableBtn.onclick = requestPermission;
+      }else{
+        startSensors();
+      }
+    }else{
+      updateStatus('No gyro – using mouse');
+      startSensors();
+    }
+  }
+
+  async function startSensors(){
+    cameraPrompt.remove();
+    initThreeJS();
+    window.addEventListener('deviceorientation', handleOrientation);
+    await goFullscreen();
+    await lockToLandscape();
+  }
+
+  function getDeviceQuaternion(alpha, beta, gamma, screenOrientation) {
+    const degToRad = THREE.MathUtils.degToRad;
+    const _z = degToRad(alpha || 0);
+    const _x = degToRad(beta || 0);
+    const _y = degToRad(gamma || 0);
+    const euler = new THREE.Euler(_x, _y, _z, 'ZXY');
+    const q = new THREE.Quaternion().setFromEuler(euler);
+
+    const orientationQuat = new THREE.Quaternion();
+    const angle = screenOrientation || 0;
+    if(angle===90||angle===-270) orientationQuat.setFromAxisAngle(new THREE.Vector3(0,0,1), Math.PI/2);
+    else if(angle===-90||angle===270) orientationQuat.setFromAxisAngle(new THREE.Vector3(0,0,1), -Math.PI/2);
+    else if(angle===180||angle===-180) orientationQuat.setFromAxisAngle(new THREE.Vector3(0,0,1), Math.PI);
+
+    q.multiply(orientationQuat);
+    const coordAdjust = new THREE.Quaternion();
+    coordAdjust.setFromAxisAngle(new THREE.Vector3(1,0,0), -Math.PI/2);
+    q.multiply(coordAdjust);
+
+    return q;
+  }
+
+  function handleOrientation(e) {
+    if (e.alpha === null) return;
+    const orient = (screen.orientation && screen.orientation.angle) || (window.orientation !== undefined ? window.orientation : 0);
+    const deviceQ = getDeviceQuaternion(e.alpha, e.beta, e.gamma, orient);
+
+    if (!initialQuaternion) {
+      initialQuaternion = deviceQ.clone();
+      cameraQuaternion.identity();
+      return;
+    }
+
+    const relativeQ = new THREE.Quaternion();
+    relativeQ.copy(initialQuaternion).invert().multiply(deviceQ);
+
+    const euler = new THREE.Euler().setFromQuaternion(relativeQ, 'YXZ');
+    euler.y = -euler.z;   // yaw = roll
+    euler.z = -euler.y;   // roll = yaw
+    euler.x = -euler.x;   // flip pitch
+    cameraQuaternion.setFromEuler(euler);
+  }
+
+  function initThreeJS(){
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x87ceeb);
+
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    const aspect = width/height;
+    const fov = 75;
+
+    leftEye  = {camera:new THREE.PerspectiveCamera(fov,aspect,0.1,1000), rig:new THREE.Object3D()};
+    rightEye = {camera:new THREE.PerspectiveCamera(fov,aspect,0.1,1000), rig:new THREE.Object3D()};
+    leftEye.rig.add(leftEye.camera);
+    rightEye.rig.add(rightEye.camera);
+    leftEye.rig.position.x  = -IPD/2;
+    rightEye.rig.position.x =  IPD/2;
+
+    player = {height:1.6, head:new THREE.Object3D()};
+    player.head.position.y = player.height;
+    player.head.add(leftEye.rig);
+    player.head.add(rightEye.rig);
+    scene.add(player.head);
+
+    renderer = new THREE.WebGLRenderer({antialias:true});
+    renderer.setSize(width,height);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    document.body.appendChild(renderer.domElement);
+
+    scene.add(new THREE.AmbientLight(0xffffff,0.6));
+    const dir = new THREE.DirectionalLight(0xffffff,0.8);
+    dir.position.set(10,20,5); dir.castShadow=true;
+    dir.shadow.mapSize.width = dir.shadow.mapSize.height = 2048;
+    scene.add(dir);
+
+    const floor = new THREE.Mesh(
+      new THREE.PlaneGeometry(30,30),
+      new THREE.MeshLambertMaterial({color:0xcccccc})
+    );
+    floor.rotation.x = -Math.PI/2; floor.receiveShadow = true;
+    scene.add(floor);
+
+    const wallMat = new THREE.MeshLambertMaterial({color:0xf0f0f0});
+    const w = (w,h,d,x,y,z)=>{ const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),wallMat);
+      m.position.set(x,y,z); m.castShadow=m.receiveShadow=true; scene.add(m); };
+    w(30,12,0.3,0,6,-15); w(30,12,0.3,0,6,15);
+    w(0.3,12,30,-15,6,0); w(0.3,12,30,15,6,0);
+
+    const cube = new THREE.Mesh(
+      new THREE.BoxGeometry(1,1,1),
+      new THREE.MeshLambertMaterial({color:0xff5733})
+    );
+    cube.position.set(0,0.5,0); cube.castShadow=true; scene.add(cube);
+
+    const pillarMat = new THREE.MeshLambertMaterial({color:0x888888});
+    const pillar = (x,z)=>{ const p=new THREE.Mesh(new THREE.CylinderGeometry(0.6,0.6,4,16),pillarMat);
+      p.position.set(x,2,z); p.castShadow=p.receiveShadow=true; scene.add(p); };
+    pillar(-6,-6); pillar(6,-6); pillar(-6,6); pillar(6,6);
+
+    const sphereMat = new THREE.MeshPhongMaterial({color:0x33aaff,shininess:100});
+    const sphere = (x,y,z,r)=>{ const s=new THREE.Mesh(new THREE.SphereGeometry(r,32,32),sphereMat);
+      s.position.set(x,y,z); s.castShadow=true; scene.add(s); };
+    sphere(-3,3,-3,0.8); sphere(3,4,2,0.6); sphere(0,5,-5,0.7);
+
+    let mouseYaw = 0, mousePitch = 0;
+    const onMouse = e=>{
+      mouseYaw   -= e.movementX*0.002;
+      mousePitch -= e.movementY*0.002;
+      const maxPitch = THREE.MathUtils.degToRad(85);
+      mousePitch = Math.max(-maxPitch, Math.min(maxPitch, mousePitch));
+      const qYaw = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), mouseYaw);
+      const qPitch = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), mousePitch);
+      cameraQuaternion.copy(qYaw).multiply(qPitch);
+    };
+    renderer.domElement.onclick = ()=>renderer.domElement.requestPointerLock();
+    document.addEventListener('pointerlockchange',()=>{
+      if(document.pointerLockElement===renderer.domElement){
+        document.addEventListener('mousemove',onMouse);
+      }else{
+        document.removeEventListener('mousemove',onMouse);
+      }
+    });
+
+    const clock = new THREE.Clock();
+    const animate = ()=>{
+      player.head.quaternion.copy(cameraQuaternion);
+      player.head.position.y = player.height;
+
+      const half = renderer.domElement.width/2;
+      renderer.setViewport(0,0,half,renderer.domElement.height);
+      renderer.setScissor(0,0,half,renderer.domElement.height);
+      renderer.setScissorTest(true);
+      renderer.render(scene,leftEye.camera);
+
+      renderer.setViewport(half,0,half,renderer.domElement.height);
+      renderer.setScissor(half,0,half,renderer.domElement.height);
+      renderer.render(scene,rightEye.camera);
+
+      requestAnimationFrame(animate);
+    };
+    animate();
+
+    window.onresize = ()=>{
+      const w = window.innerWidth, h = window.innerHeight;
+      const a = w/h;
+      leftEye.camera.aspect = rightEye.camera.aspect = a;
+      leftEye.camera.updateProjectionMatrix();
+      rightEye.camera.updateProjectionMatrix();
+      renderer.setSize(w,h);
+    };
+  }
+
+  requestAnimationFrame(checkReady);
+</script>
+</body>
+</html>
