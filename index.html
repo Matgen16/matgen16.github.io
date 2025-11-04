@@ -156,17 +156,17 @@
     const relativeQ = new THREE.Quaternion();
     relativeQ.copy(initialQuaternion).invert().multiply(deviceQ);
 
-    // Convert to Euler (YXZ order)
-    const euler = new THREE.Euler().setFromQuaternion(relativeQ, 'YXZ');
+    // Extract forward direction
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(relativeQ);
 
-    // Keep yaw and pitch correct
-    const yaw = euler.y;   // left/right
-    const pitch = -euler.x; // flip pitch if needed
+    // Compute yaw from forward vector (ignoring roll)
+    const yaw = Math.atan2(forward.x, -forward.z);
 
-    // Remove roll completely
-    euler.set(pitch, yaw, 0, 'YXZ');
+    // Compute pitch from forward vector
+    const pitch = Math.asin(THREE.MathUtils.clamp(forward.y, -1, 1));
 
-    cameraQuaternion.setFromEuler(euler);
+    // Create quaternion from pitch + yaw only
+    cameraQuaternion.setFromEuler(new THREE.Euler(-pitch, yaw, 0, 'YXZ'));
   }
 
 
