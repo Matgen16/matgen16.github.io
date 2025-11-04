@@ -145,17 +145,9 @@
 
     if (!initialQuaternion) {
       initialQuaternion = deviceQ.clone();
-
-      // Offset baseline so +X (east/north) is forward, parallel to ground
-      const forwardOffset = new THREE.Quaternion()
-        .setFromAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 2); // rotate -90° around Y
-      const levelOffset = new THREE.Quaternion()
-        .setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2); // pitch down 90° to be level
-
-      cameraQuaternion.copy(levelOffset).multiply(forwardOffset);
+      cameraQuaternion.identity();
       return;
     }
-
 
     const relativeQ = new THREE.Quaternion();
     relativeQ.copy(initialQuaternion).invert().multiply(deviceQ);
