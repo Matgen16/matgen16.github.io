@@ -144,7 +144,12 @@
     const deviceQ = getDeviceQuaternion(e.alpha, e.beta, e.gamma, orient);
 
     if (!initialQuaternion) {
-      initialQuaternion = deviceQ.clone();
+      const startEuler = new THREE.Euler(
+        THREE.MathUtils.degToRad(90), // pitch up
+        0,                            // yaw
+        0,                            // roll
+        'YXZ'
+      );
       cameraQuaternion.identity();
       return;
     }
