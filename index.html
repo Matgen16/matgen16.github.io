@@ -294,7 +294,8 @@
 
     group.userData = { connections, handIndex };
     return group;
-}
+  }
+  
   function updateHandMesh(handMesh, keypoints, handData) {
     // Convert keypoints to 3D world positions
     const worldPoints = keypoints.map(kp => {
