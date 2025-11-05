@@ -255,52 +255,46 @@
     cameraQuaternion.setFromEuler(euler);
   }
 
-  function createHandMesh(color) {
+  function createHandMesh(handIndex) {
     const group = new THREE.Group();
-    
-    // Create a better looking robot hand with matte finish
-    const handMaterial = new THREE.MeshLambertMaterial({ 
-      color: color
-    });
-    
-    // Palm - more robotic looking box
-    const palmGeometry = new THREE.BoxGeometry(0.08, 0.02, 0.1);
-    const palm = new THREE.Mesh(palmGeometry, handMaterial);
-    palm.castShadow = true;
-    group.add(palm);
-    
-    // Wrist connector
-    const wristGeometry = new THREE.CylinderGeometry(0.03, 0.035, 0.04, 8);
-    const wrist = new THREE.Mesh(wristGeometry, handMaterial);
-    wrist.castShadow = true;
-    group.add(wrist);
-    
-    // Create 5 fingers with mechanical joints
-    for (let f = 0; f < 5; f++) {
-      // 3 segments per finger + fingertip
-      for (let s = 0; s < 4; s++) {
-        // Finger segment (main part)
-        const segmentWidth = s === 3 ? 0.012 : 0.016 - s * 0.002;
-        const segmentLength = s === 0 ? 0.035 : 0.03 - s * 0.003;
-        const segmentGeometry = new THREE.BoxGeometry(segmentWidth, segmentLength, segmentWidth);
-        const segment = new THREE.Mesh(segmentGeometry, handMaterial);
-        segment.castShadow = true;
-        group.add(segment);
-        
-        // Joint sphere (knuckle)
-        if (s < 3) {
-          const jointRadius = s === 0 ? 0.01 : 0.008 - s * 0.001;
-          const jointGeometry = new THREE.SphereGeometry(jointRadius, 8, 8);
-          const joint = new THREE.Mesh(jointGeometry, handMaterial);
-          joint.castShadow = true;
-          group.add(joint);
-        }
-      }
-    }
-    
-    return group;
-  }
 
+    // --- Hand color ---
+    const colors = [0xff0000, 0x0000ff, 0x00ff00, 0xffff00];
+    const handColor = colors[handIndex % colors.length];
+    const material = new THREE.MeshLambertMaterial({ color: handColor });
+
+    // --- Line segments (bones) ---
+    const lineGeom = new THREE.CylinderGeomety( 0.0075, 0.0075, 1, 8, 1);
+    const lineMat = material.clone();
+
+    const connections = [
+        [0,1],[1,2],[2,3],[3,4],[2,5],
+        [5,6],[6,7],[7,8],
+        [9,10],[10,11],[11,12],
+        [13,14],[14,15],[15,16],
+        [0,17],[17,18],[18,19],[19,20],
+        [5,9],[9,13],[13,17],
+        [17,0]
+    ];
+
+    connections.forEach(() => {
+        const cyl = new THREE.Mesh(lineGeom, lineMat);
+        cyl.castShadow = true;
+        group.add(cyl);
+    });
+
+    // --- Joint spheres ---
+    const jointGeom = new THREE.SphereGeometry(0.008, 12, 12);
+    const jointMat = material.clone();
+    for (let i = 0; i < 22; i++) {
+        const sphere = new THREE.Mesh(jointGeom, jointMat);
+        sphere.castShadow = true;
+        group.add(sphere);
+    }
+
+    group.userData = { connections, handIndex };
+    return group;
+}
   function updateHandMesh(handMesh, keypoints, handData) {
     // Convert keypoints to 3D world positions
     const worldPoints = keypoints.map(kp => {
