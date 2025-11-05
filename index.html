@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>VR Hand Detection</title>
+  <title>VR Hand Detection - Enhanced MediaPipe</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <style>
     html, body {
@@ -67,14 +67,14 @@
 </head>
 <body>
 <div id="loading">
-  <div>Loading Libraries…</div>
+  <div>Loading MediaPipe Hands (Full Model)…</div>
   <div style="font-size:0.8rem;margin-top:8px;">(If stuck, refresh)</div>
 </div>
 
 <div id="cameraPrompt" style="display:none;">
   <button id="enableCamera">Allow Camera & Motion Access</button>
   <div id="status">Tap to begin…</div>
-  <span>v1.61</span>
+  <span>v2.0 - MediaPipe Full Accuracy</span>
 </div>
 
 <video id="video" autoplay playsinline></video>
@@ -171,25 +171,18 @@
   }
 
   async function setupHandDetection() {
+    updateStatus('Loading MediaPipe Full Model...');
+    
     const model = handPoseDetection.SupportedModels.MediaPipeHands;
     const detectorConfig = {
       runtime: 'mediapipe',
-      solutionPath: `https://cdn.jsdelivr.net/npm/@mediapipe/hands`,
+      solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/hands',
       maxHands: 2,
-      modelType: 'full',
-      detectorModelUrl: undefined,
-      landmarkModelUrl: undefined
+      modelType: 'full', // FULL MODEL for maximum accuracy
     };
     
-    // Configure MediaPipe Hands with better edge detection
-    if (window.Module) {
-      window.Module.locateFile = (file) => {
-        return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
-      };
-    }
-    
     handDetector = await handPoseDetection.createDetector(model, detectorConfig);
-    updateStatus('Hand detection ready');
+    updateStatus('MediaPipe Full Model Ready! 🖐️');
   }
 
   async function startSensors(){
@@ -433,8 +426,8 @@
             const kp1 = hand.keypoints[idx1];
             const kp2 = hand.keypoints[idx2];
             debugCtx.beginPath();
-            debugCtx.moveTo(kp1.x * (640/1280), kp1.y * (720/480));
-            debugCtx.lineTo(kp2.x * (640/1280), kp2.y * (720/480));
+            debugCtx.moveTo(kp1.x * (640/1280), kp1.y * (480/720));
+            debugCtx.lineTo(kp2.x * (640/1280), kp2.y * (480/720));
             debugCtx.stroke();
           }
           
@@ -442,7 +435,7 @@
           debugCtx.fillStyle = color;
           for (const kp of hand.keypoints) {
             debugCtx.beginPath();
-            debugCtx.arc(kp.x * (640/1280), kp.y * (720/480), 5, 0, 2 * Math.PI);
+            debugCtx.arc(kp.x * (640/1280), kp.y * (480/720), 5, 0, 2 * Math.PI);
             debugCtx.fill();
           }
         }
