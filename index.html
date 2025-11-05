@@ -74,7 +74,7 @@
 <div id="cameraPrompt" style="display:none;">
   <button id="enableCamera">Allow Camera & Motion Access</button>
   <div id="status">Tap to begin…</div>
-  <span>v1.68</span>
+  <span>v1.69</span>
 </div>
 
 <video id="video" autoplay playsinline></video>
@@ -264,7 +264,7 @@
     const material = new THREE.MeshLambertMaterial({ color: handColor });
 
     // --- Line segments (bones) ---
-    const lineGeom = new THREE.CylinderGeomety( 0.0075, 0.0075, 1, 8, 1);
+    const lineGeom = new THREE.CylinderGeometry(0.0075, 0.0075, 1, 8, 1);
     const lineMat = material.clone();
 
     const connections = [
