@@ -2,11 +2,11 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87ceeb);
 
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-camera.position.set(0, 5, 10);
+camera.position.set(0, 5, 0);
 camera.rotation.order = 'YXZ';
 
 const cameraRotation = { x: 0, y: 0 };
-const cameraPosition = new THREE.Vector3(0, 5, 10);
+const cameraPosition = new THREE.Vector3(0, 5, 0);
 const moveSpeed = 0.1;
 const sensitivity = 0.002;
 
@@ -18,25 +18,46 @@ document.getElementById('canvas-container').appendChild(renderer.domElement);
 const uiCanvas = document.getElementById('ui');
 const uiCtx = uiCanvas.getContext('2d');
 
-
 //Blocks
 const blockList = [
-    { name: 'null', texture: '' },
-    { name: 'dirt', texture: './textures/Dirt.webp' },
-    { name: 'stone', texture: './textures/Stone.webp' },
-    { name: 'oak_planks', texture: './textures/Oak_Planks.webp' },
-]
-
+    { name: 'null', texture: '', color: 0x000000 },
+    { name: 'dirt', texture: 'https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.19.3/assets/minecraft/textures/block/dirt.png', color: 0x8B4513 },
+    { name: 'stone', texture: 'https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.19.3/assets/minecraft/textures/block/stone.png', color: 0x808080 },
+    { name: 'oak_planks', texture: 'https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.19.3/assets/minecraft/textures/block/oak_planks.png', color: 0xDEB887 },
+    { 
+        name: 'oak_log', 
+        texture: 'https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.19.3/assets/minecraft/textures/block/oak_log.png',
+        topTexture: 'https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.19.3/assets/minecraft/textures/block/oak_log_top.png',
+        color: 0x8B4513 
+    },
+        { 
+        name: 'grass', 
+        texture: 'https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.19.3/assets/minecraft/textures/block/grass_block_side.png',
+        topTexture: 'https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.19.3/assets/minecraft/textures/block/grass_block_top.png',
+        bottomTexture: 'https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.19.3/assets/minecraft/textures/block/dirt.png',
+        color: 0x8B4513 
+    },
+];	
 
 //Selected block type
-let hotbar = [blockList[1], blockList[2], blockList[3], blockList[0], blockList[0], blockList[0], blockList[0], blockList[0], blockList[0]];
+let hotbar = [blockList[0],blockList[1], blockList[2], blockList[3], blockList[4], blockList[5], blockList[0], blockList[0], blockList[0]];
 let selectedHotbarIndex = 0;
 
-//Initilize hotbar textures
+//Initialize hotbar textures
 hotbar.forEach(block => {
     if (block.texture && !block.img) {
         block.img = new Image();
         block.img.src = block.texture;
+    } else if (block.color) {
+        // Create a colored square for hotbar display
+        const canvas = document.createElement('canvas');
+        canvas.width = 16;
+        canvas.height = 16;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#' + block.color.toString(16).padStart(6, '0');
+        ctx.fillRect(0, 0, 16, 16);
+        block.img = new Image();
+        block.img.src = canvas.toDataURL();
     }
 });
 
@@ -47,7 +68,6 @@ hotbar.forEach(b => {
         b.threeTexture = textureLoader.load(
             b.texture,
             (tex) => {
-                // prefer crisp pixel look for block textures (optional)
                 tex.magFilter = THREE.NearestFilter;
                 tex.minFilter = THREE.NearestMipMapNearestFilter;
             },
@@ -55,9 +75,44 @@ hotbar.forEach(b => {
             (err) => { console.warn('Texture load failed:', b.texture, err); }
         );
     }
+    // Load top texture for blocks like logs
+    if (b.topTexture && !b.threeTopTexture) {
+        b.threeTopTexture = textureLoader.load(
+            b.topTexture,
+            (tex) => {
+                tex.magFilter = THREE.NearestFilter;
+                tex.minFilter = THREE.NearestMipMapNearestFilter;
+            },
+            undefined,
+            (err) => { console.warn('Top texture load failed:', b.topTexture, err); }
+        );
+    }
+	if (b.bottomTexture && !b.threeBottomTexture) {
+        b.threeBottomTexture = textureLoader.load(
+            b.bottomTexture,
+            (tex) => {
+                tex.magFilter = THREE.NearestFilter;
+                tex.minFilter = THREE.NearestMipMapNearestFilter;
+            },
+            undefined,
+            (err) => { console.warn('Top texture load failed:', b.bottomTexture, err); }
+        );
+    }
+    if (b.color && !b.threeTexture) {
+        // Create a simple colored texture
+        const canvas = document.createElement('canvas');
+        canvas.width = 16;
+        canvas.height = 16;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#' + b.color.toString(16).padStart(6, '0');
+        ctx.fillRect(0, 0, 16, 16);
+        
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.magFilter = THREE.NearestFilter;
+        texture.minFilter = THREE.NearestMipMapNearestFilter;
+        b.threeTexture = texture;
+    }
 });
-
-
 
 // Ensure UI canvas is positioned as an overlay and sized to match the renderer
 function resizeUICanvas() {
@@ -108,11 +163,6 @@ const previewMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, opacity: 
 const previewOutlineMaterial = new THREE.LineBasicMaterial({ color: 0x000000 });
 
 const voxelGeometry = new THREE.BoxGeometry(VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE);
-const materials = [
-    new THREE.MeshLambertMaterial({ color: 0x8B4513 }),
-    new THREE.MeshLambertMaterial({ color: 0x228B22 }),
-    new THREE.MeshLambertMaterial({ color: 0x808080 }),
-];
 
 class Chunk {
     constructor(x, y, z) {
@@ -128,7 +178,8 @@ class Chunk {
     }
     
     setVoxel(x, y, z, type) {
-        this.voxels.set(this.getKey(x, y, z), type);
+        // Store block data with type information
+        this.voxels.set(this.getKey(x, y, z), { type, blockData: blockList[type] });
         this.updateMesh();
     }
     
@@ -148,59 +199,122 @@ class Chunk {
         const geometry = new THREE.BufferGeometry();
         const positions = [];
         const normals = [];
-        const colors = [];
+        const uvs = [];
         const indices = [];
+        const groups = [];
         let vertexCount = 0;
         
-        this.voxels.forEach((type, key) => {
-            const [x, y, z] = key.split(',').map(Number);
-            const worldX = this.x * CHUNK_SIZE + x;
-            const worldY = this.y * CHUNK_SIZE + y;
-            const worldZ = this.z * CHUNK_SIZE + z;
+        // Group voxels by type and face for multi-material mesh
+        const voxelsByTypeFace = new Map();
+        this.voxels.forEach((voxelData, key) => {
+            const type = voxelData.type;
+            const blockData = voxelData.blockData;
             
-            const color = materials[type % materials.length].color;
+            // Check if this block has different top/bottom textures
+            const hasTopTexture = blockData.topTexture && blockData.threeTopTexture;
+            const hasBottomTexture = blockData.bottomTexture && blockData.threeBottomTexture;
             
-            const faces = [
-                { dir: [1,0,0], corners: [[1,0,0],[1,1,0],[1,1,1],[1,0,1]] },
-                { dir: [-1,0,0], corners: [[0,0,1],[0,1,1],[0,1,0],[0,0,0]] },
-                { dir: [0,1,0], corners: [[0,1,0],[0,1,1],[1,1,1],[1,1,0]] },
-                { dir: [0,-1,0], corners: [[0,0,0],[1,0,0],[1,0,1],[0,0,1]] },
-                { dir: [0,0,1], corners: [[0,0,1],[1,0,1],[1,1,1],[0,1,1]] },
-                { dir: [0,0,-1], corners: [[1,0,0],[0,0,0],[0,1,0],[1,1,0]] },
-            ];
-            
-            faces.forEach(({ dir, corners }) => {
-                const startVertex = vertexCount;
-                
-                corners.forEach(([cx, cy, cz]) => {
-                    positions.push(
-                        worldX + cx * VOXEL_SIZE - VOXEL_SIZE/2,
-                        worldY + cy * VOXEL_SIZE - VOXEL_SIZE/2,
-                        worldZ + cz * VOXEL_SIZE - VOXEL_SIZE/2
-                    );
-                    normals.push(...dir);
-                    colors.push(color.r, color.g, color.b);
+            if (hasTopTexture) {
+                // Separate materials for top/bottom vs sides
+                ['top', 'side'].forEach(faceType => {
+                    const materialKey = `${type}_${faceType}`;
+                    if (!voxelsByTypeFace.has(materialKey)) {
+                        voxelsByTypeFace.set(materialKey, []);
+                    }
+                    voxelsByTypeFace.get(materialKey).push({ key, faceType });
                 });
+            } else {
+                // Single material for all faces
+                const materialKey = `${type}_all`;
+                if (!voxelsByTypeFace.has(materialKey)) {
+                    voxelsByTypeFace.set(materialKey, []);
+                }
+                voxelsByTypeFace.get(materialKey).push({ key, faceType: 'all' });
+            }
+        });
+        
+        const meshMaterials = [];
+        let groupIndex = 0;
+        
+        voxelsByTypeFace.forEach((items, materialKey) => {
+            const [typeStr, faceType] = materialKey.split('_');
+            const type = parseInt(typeStr);
+            const startIndex = indices.length;
+            
+            items.forEach(({ key }) => {
+                const [x, y, z] = key.split(',').map(Number);
+                const worldX = this.x * CHUNK_SIZE + x;
+                const worldY = this.y * CHUNK_SIZE + y;
+                const worldZ = this.z * CHUNK_SIZE + z;
                 
-                indices.push(
-                    startVertex, startVertex + 1, startVertex + 2,
-                    startVertex, startVertex + 2, startVertex + 3
-                );
+                const faces = [
+                    { dir: [1,0,0], corners: [[1,0,0],[1,1,0],[1,1,1],[1,0,1]], uvs: [[0,0],[0,1],[1,1],[1,0]], type: 'side' },
+                    { dir: [-1,0,0], corners: [[0,0,1],[0,1,1],[0,1,0],[0,0,0]], uvs: [[0,0],[0,1],[1,1],[1,0]], type: 'side' },
+                    { dir: [0,1,0], corners: [[0,1,0],[0,1,1],[1,1,1],[1,1,0]], uvs: [[0,0],[0,1],[1,1],[1,0]], type: 'top' },
+                    { dir: [0,-1,0], corners: [[0,0,0],[1,0,0],[1,0,1],[0,0,1]], uvs: [[0,0],[1,0],[1,1],[0,1]], type: 'top' },
+                    { dir: [0,0,1], corners: [[0,0,1],[1,0,1],[1,1,1],[0,1,1]], uvs: [[0,0],[1,0],[1,1],[0,1]], type: 'side' },
+                    { dir: [0,0,-1], corners: [[1,0,0],[0,0,0],[0,1,0],[1,1,0]], uvs: [[0,0],[1,0],[1,1],[0,1]], type: 'side' },
+                ];
                 
-                vertexCount += 4;
+                faces.forEach(({ dir, corners, uvs: faceUvs, type: fType }) => {
+                    // Only render faces that match this material group
+                    if (faceType === 'all' || faceType === fType) {
+                        const startVertex = vertexCount;
+                        
+                        corners.forEach(([cx, cy, cz], i) => {
+                            positions.push(
+                                worldX + cx * VOXEL_SIZE - VOXEL_SIZE/2,
+                                worldY + cy * VOXEL_SIZE - VOXEL_SIZE/2,
+                                worldZ + cz * VOXEL_SIZE - VOXEL_SIZE/2
+                            );
+                            normals.push(...dir);
+                            uvs.push(...faceUvs[i]);
+                        });
+                        
+                        indices.push(
+                            startVertex, startVertex + 1, startVertex + 2,
+                            startVertex, startVertex + 2, startVertex + 3
+                        );
+                        
+                        vertexCount += 4;
+                    }
+                });
             });
+            
+            const count = indices.length - startIndex;
+            if (count > 0) {
+                groups.push({ start: startIndex, count, materialIndex: groupIndex });
+                
+                // Create appropriate material based on face type
+                const block = blockList[type];
+                let material;
+                if (faceType === 'top' && block.threeTopTexture) {
+                    material = new THREE.MeshLambertMaterial({ map: block.threeTopTexture });
+                } else if (faceType === 'bottom' && block.threeBottomTexture) {
+                    material = new THREE.MeshLambertMaterial({ map: block.threeBottomTexture });
+                } else if (block.threeTexture) {
+                    material = new THREE.MeshLambertMaterial({ map: block.threeTexture });
+                } else if (block.color) {
+                    material = new THREE.MeshLambertMaterial({ color: block.color });
+                } else {
+                    material = new THREE.MeshLambertMaterial({ color: 0x808080 });
+                }
+                
+                meshMaterials.push(material);
+                groupIndex++;
+            }
         });
         
         geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
         geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
-        geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+        geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
         geometry.setIndex(indices);
         
-		const textureLoader = new THREE.TextureLoader();
-		const texture = textureLoader.load(hotbar[selectedHotbarIndex].texture);
-		
-        const material = new THREE.MeshBasicMaterial({map: texture});
-        this.mesh = new THREE.Mesh(geometry, material);
+        groups.forEach(g => {
+            geometry.addGroup(g.start, g.count, g.materialIndex);
+        });
+        
+        this.mesh = new THREE.Mesh(geometry, meshMaterials);
         scene.add(this.mesh);
     }
 }
@@ -289,8 +403,7 @@ function onMouseClick(event) {
             const z = Math.round(voxelPos.z);
             const target = new THREE.Vector3(x, y, z);
             if (camera.position.distanceTo(target) <= MAX_REACH) {
-                const type = Math.floor(Math.random() * materials.length);
-                setVoxel(x, y, z, type);
+                setVoxel(x, y, z, selectedHotbarIndex);
                 updateStats();
             }
         }
@@ -498,7 +611,6 @@ window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-
 // Crosshair
 function drawCrosshair() {
     const size = 20;
@@ -524,6 +636,10 @@ function updateHotbar() {
     const totalWidth = slots * (slotSize + padding) - padding;
     const startX = (cssWidth - totalWidth) / 2;
     const y = cssHeight - slotSize - 20;
+    
+    // Disable image smoothing for crisp pixel art
+    uiCtx.imageSmoothingEnabled = false;
+    
     for (let j = 1; j >= 0; j--) {
         for (let i = 0; i < slots; i++) {
             if (i == selectedHotbarIndex && j == 1) {
