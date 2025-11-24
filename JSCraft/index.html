@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JSCraft</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="canvas-container"></div>
+    <canvas id="ui"></canvas>
+
+    <div id="pointer-lock-prompt">
+        <div>Click to Start</div>
+        <div style="font-size: 12px; margin-top: 10px; opacity: 0.7;">Press ESC to unlock mouse</div>
+    </div>
+
+    </div>
+    
+    <div id="stats">
+        <div class="stat-row">Chunks: <span id="chunk-count">0</span></div>
+        <div class="stat-row">Voxels: <span id="voxel-count">0</span></div>
+        <div class="stat-row">FPS: <span id="fps">60</span></div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="./script.js"></script>
+</body>
+</html>
