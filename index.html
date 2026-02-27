@@ -3,7 +3,7 @@
 <head>
   <style>
     * { margin: 0; padding: 0; }
-    body { background: black; overflow: hidden; cursor: none; }
+    body { background: black; }
     video { width: 100vw; height: 100vh; position: fixed; }
     #overlay {
       position: fixed;
@@ -16,53 +16,21 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      cursor: none;
+      cursor: pointer;
       z-index: 10;
     }
   </style>
 </head>
 <body>
-  <div id="overlay">▶ Click to Play</div>
-  <video src="video.mp4" loop></video>
+  <div id="overlay"></div>
+  <video src="video.mp4"></video>
   <script>
     const v = document.querySelector('video');
     const overlay = document.getElementById('overlay');
 
-    // Block keyboard shortcuts
-    document.addEventListener('keydown', (e) => {
-      // Block Ctrl+W, Ctrl+T, Ctrl+L, Ctrl+R, Alt+F4, F5, F11, Escape, etc.
-      if (
-        (e.ctrlKey && ['w','t','l','r','n','h','j','u','p'].includes(e.key.toLowerCase())) ||
-        (e.altKey && e.key === 'F4') ||
-        e.key === 'F5' ||
-        e.key === 'F11' ||
-        e.key === 'Escape'
-      ) {
-        e.preventDefault();
-        e.stopPropagation();
-      }
-    }, true);
-
-    // Block right click
-    document.addEventListener('contextmenu', (e) => e.preventDefault());
-
-    // Hide cursor everywhere
-    document.addEventListener('mousemove', () => {
-      document.body.style.cursor = 'none';
-    });
-
     overlay.addEventListener('click', () => {
       overlay.style.display = 'none';
       v.play();
-      // Request fullscreen — no ESC popup in a trusted click event
-      document.documentElement.requestFullscreen({ navigationUI: 'hide' });
-    });
-
-    // If they somehow exit fullscreen, re-request it
-    document.addEventListener('fullscreenchange', () => {
-      if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen({ navigationUI: 'hide' });
-      }
     });
   </script>
 </body>
