@@ -4,15 +4,35 @@
   <style>
     * { margin: 0; padding: 0; }
     body { background: black; }
-    video { width: 100vw; height: 100vh; overflow:hidden; position:fixed;}
+    video { width: 100vw; height: 100vh; position: fixed; }
+    #overlay {
+      position: fixed;
+      width: 100vw;
+      height: 100vh;
+      background: black;
+      color: white;
+      font-size: 48px;
+      font-family: sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      z-index: 10;
+    }
   </style>
 </head>
 <body>
-  <video src="video.mp4" autoplay></video>
+  <div id="overlay"></div>
+  <video src="video.mp4"></video>
   <script>
     const v = document.querySelector('video');
-    v.play();
-    v.requestFullscreen();
+    const overlay = document.getElementById('overlay');
+
+    overlay.addEventListener('click', () => {
+      overlay.style.display = 'none';
+      v.play();
+      v.requestFullscreen();
+    });
   </script>
 </body>
 </html>
