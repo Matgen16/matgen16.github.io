@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>VR Hand Tracking - 3D Hands Visible Again!</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <style>
+    html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000;}
+    #loading,#cameraPrompt{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:1.2rem;padding:1rem 2rem;background:rgba(0,0,0,0.9);border-radius:12px;text-align:center;z-index:100;max-width:90%;}
+    button{background:#007AFF;color:white;border:none;padding:12px 20px;border-radius:8px;font-size:1.1rem;margin-top:12px;cursor:pointer;}
+    button:active{transform:scale(0.98);}
+    #status{font-size:0.9rem;margin-top:10px;color:#0f0;}
+    #error{color:#ff6666;margin-top:10px;display:none;}
+    #video{display:none;}
+    #debugVideo{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;z-index:49;display:none;}
+    #debugOverlay{position:absolute;top:0;left:0;width:100%;height:100%;z-index:50;display:none;pointer-events:none;}
+    #toggleDebug{
+      position:fixed;top:20px;left:50%;transform:translateX(-50%);
+      background:rgba(0,120,255,0.9);color:white;border:none;padding:14px 20px;
+      border-radius:30px;font-size:1.8rem;cursor:pointer;z-index:51;
+      box-shadow:0 4px 20px rgba(0,0,0,0.5);backdrop-filter:blur(10px);
+    }
+    #toggleDebug:active{transform:translateX(-50%) scale(0.95);}
+    #moveHint{position:fixed;bottom:100px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.7);padding:8px 16px;border-radius:8px;font-size:0.9rem;z-index:51;display:none;pointer-events:none;}
+  </style>
+</head>
+<body>
+  <div id="loading">Loading MediaPipe Hands...</div>
+  <div id="cameraPrompt" style="display:none;">
+    <button id="enableCamera">Start Camera & Motion</button>
+    <div id="status">Tap → Allow camera</div>
+    <div id="error">Camera blocked</div>
+  </div>
+  <div id="moveHint">Pinch ➜ Move hand to walk/strafe</div>
+  
+  <video id="video" autoplay playsinline muted></video>
+  <video id="debugVideo" autoplay playsinline muted></video>
+  <canvas id="debugOverlay"></canvas>
+  <button id="toggleDebug">👁️</button>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/hand-pose-detection"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands"></script>
+
+  <script>
+    let scene, renderer, player, leftEye, rightEye;
+    const IPD = 0.06;
+    let cameraQuaternion = new THREE.Quaternion();
+    let initialQuaternion = null;
+    let handDetector = null;
+    let videoElement = null;
+    let debugVideo = null;
+    let debugOverlay = null;
+    let overlayCtx = null;
+    let handMeshes = [];
+    let isDebugMode = false;
+
+    // Movement
+    let isPinching = false;
+    let previousPinchPos = new THREE.Vector3();
+    const movementSpeed = 3.2;
+    const deadzone = 0.015;
+    let deltaTime = 0;
+    let lastTime = performance.now();
+
+    const loadingEl = document.getElementById('loading');
+    const cameraPrompt = document.getElementById('cameraPrompt');
+    const moveHint = document.getElementById('moveHint');
+    const toggleBtn = document.getElementById('toggleDebug');
+
+    function createHandMesh(color) {
+      const group = new THREE.Group();
+      const material = new THREE.MeshLambertMaterial({color: color || 0x00ff00});
+
+      // Palm
+      const palmGeo = new THREE.BoxGeometry(0.09, 0.03, 0.11);
+      const palm = new THREE.Mesh(palmGeo, material);
+      group.add(palm);
+
+      // Fingers (5 fingers × 4 segments)
+      for (let f = 0; f < 5; f++) {
+        for (let s = 0; s < 4; s++) {
+          const width = 0.018 - s * 0.002;
+          const length = s === 0 ? 0.04 : 0.035;
+          const segGeo = new THREE.BoxGeometry(width, length, width);
+          const segment = new THREE.Mesh(segGeo, material);
+          group.add(segment);
+
+          if (s < 3) {
+            const joint = new THREE.Mesh(new THREE.SphereGeometry(0.012, 8, 6), material);
+            group.add(joint);
+          }
+        }
+      }
+      group.scale.set(1.5, 1.5, 1.5); // Make hands clearly visible
+      return group;
+    }
+
+    function updateHandMesh(mesh, keypoints3D) {
+      if (!keypoints3D || keypoints3D.length < 21) return;
+
+      // Convert MediaPipe 3D points (meters, camera space) to THREE.Vector3
+      const points = keypoints3D.map(p => new THREE.Vector3(p.x, p.y, p.z));
+
+      // Palm center and orientation
+      const wrist = points[0];
+      const indexMcp = points[5];
+      const pinkyMcp = points[17];
+      const middleMcp = points[9];
+      const palmCenter = new THREE.Vector3().addVectors(wrist, middleMcp).multiplyScalar(0.5);
+
+      const palm = mesh.children[0];
+      palm.position.copy(palmCenter);
+      palm.position.lerp(palmCenter, 0.3);
+
+      // Orient palm
+      const forward = new THREE.Vector3().subVectors(middleMcp, wrist).normalize();
+      const side = new THREE.Vector3().subVectors(pinkyMcp, indexMcp).normalize();
+      const up = new THREE.Vector3().crossVectors(forward, side).normalize();
+      const matrix = new THREE.Matrix4().makeBasis(side.negate(), up, forward.negate());
+      palm.quaternion.slerp(new THREE.Quaternion().setFromRotationMatrix(matrix), 0.3);
+
+      // Finger chains
+      const chains = [
+        [2,3,4],       // thumb (skip wrist to mcp)
+        [5,6,7,8],     // index
+        [9,10,11,12],  // middle
+        [13,14,15,16], // ring
+        [17,18,19,20]  // pinky
+      ];
+
+      let segIndex = 1; // after palm
+      chains.forEach(chain => {
+        for (let i = 0; i < chain.length; i++) {
+          const start = i === 0 ? wrist : points[chain[i-1]];
+          const end = points[chain[i]];
+          const segment = mesh.children[segIndex++];
+
+          const mid = new THREE.Vector3().lerpVectors(start, end, 0.5);
+          segment.position.lerp(mid, 0.3);
+
+          const dir = new THREE.Vector3().subVectors(end, start);
+          const length = dir.length();
+          if (length > 0.001) {
+            segment.scale.y = length / 0.035;
+            segment.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), dir.normalize());
+          }
+
+          if (i < chain.length - 1) {
+            const joint = mesh.children[segIndex++];
+            joint.position.copy(end);
+          }
+        }
+      });
+
+      mesh.visible = true;
+    }
+
+    function toggleDebug() {
+      isDebugMode = !isDebugMode;
+      if (isDebugMode) {
+        debugVideo.style.display = 'block';
+        debugOverlay.style.display = 'block';
+        renderer.domElement.style.display = 'none';
+        toggleBtn.textContent = '3D';
+        toggleBtn.style.background = 'rgba(0,200,0,0.9)';
+        moveHint.style.display = 'none';
+      } else {
+        debugVideo.style.display = 'none';
+        debugOverlay.style.display = 'none';
+        renderer.domElement.style.display = 'block';
+        toggleBtn.textContent = '👁️';
+        toggleBtn.style.background = 'rgba(0,120,255,0.9)';
+      }
+    }
+
+    async function requestCameraAndMotion() {
+      try {
+        if (typeof DeviceOrientationEvent.requestPermission === 'function') await DeviceOrientationEvent.requestPermission();
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment", width: {ideal:1280}, height: {ideal:720} }
+        });
+        
+        videoElement = document.getElementById('video');
+        debugVideo = document.getElementById('debugVideo');
+        videoElement.srcObject = debugVideo.srcObject = stream;
+        videoElement.play(); debugVideo.play();
+
+        videoElement.onloadedmetadata = () => {
+          cameraPrompt.remove();
+          debugOverlay = document.getElementById('debugOverlay');
+          overlayCtx = debugOverlay.getContext('2d');
+          debugOverlay.width = innerWidth; debugOverlay.height = innerHeight;
+          toggleBtn.onclick = toggleDebug;
+
+          setupHandDetection().then(() => {
+            initThreeJS();
+            window.addEventListener('deviceorientation', handleOrientation);
+            detectHands();
+          });
+        };
+      } catch (err) {
+        document.getElementById('error').style.display = 'block';
+        document.getElementById('error').textContent = 'Camera error: ' + err.message;
+      }
+    }
+
+    async function setupHandDetection() {
+      const model = handPoseDetection.SupportedModels.MediaPipeHands;
+      handDetector = await handPoseDetection.createDetector(model, {
+        runtime: 'mediapipe',
+        solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/hands',
+        modelType: 'full',
+        maxHands: 2
+      });
+    }
+
+    function handleOrientation(e) {
+      if (e.alpha === null || isDebugMode) return;
+      const orient = (screen.orientation?.angle) || window.orientation || 0;
+      const degToRad = THREE.MathUtils.degToRad;
+      let q = new THREE.Quaternion().setFromEuler(new THREE.Euler(degToRad(e.beta), degToRad(e.alpha), degToRad(e.gamma), 'YXZ'));
+      if (orient) q.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1), degToRad(orient)));
+      q.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0), -Math.PI/2));
+      if (!initialQuaternion) { initialQuaternion = q.clone(); return; }
+      cameraQuaternion.copy(initialQuaternion.clone().invert().multiply(q));
+    }
+
+    function processMovement(hand) {
+      if (isDebugMode || !hand.keypoints3D) return;
+      const dist = hand.keypoints3D[4].distanceTo(hand.keypoints3D[8]);
+      const wasPinching = isPinching;
+      isPinching = dist < 0.05;
+
+      if (isPinching && !wasPinching) { previousPinchPos.copy(hand.keypoints3D[8]); moveHint.style.display = 'block'; }
+      if (!isPinching && wasPinching) moveHint.style.display = 'none';
+
+      if (isPinching) {
+        const delta = new THREE.Vector3().subVectors(hand.keypoints3D[8], previousPinchPos);
+        if (delta.length() > deadzone) {
+          const forward = new THREE.Vector3(0,0,-1);
+          player.head.getWorldDirection(forward).setY(0).normalize();
+          const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0,1,0)).normalize();
+          player.head.position.addScaledVector(forward, -delta.z * movementSpeed * 20 * deltaTime);
+          player.head.position.addScaledVector(right, delta.x * movementSpeed * 20 * deltaTime);
+        }
+        previousPinchPos.copy(hand.keypoints3D[8]);
+      }
+    }
+
+    async function detectHands() {
+      if (!handDetector || !videoElement || videoElement.readyState < 2) {
+        requestAnimationFrame(detectHands); return;
+      }
+
+      const now = performance.now();
+      deltaTime = (now - lastTime) / 1000; lastTime = now;
+
+      try {
+        const hands = await handDetector.estimateHands(videoElement, {flipHorizontal: false});
+        const goodHands = hands.filter(h => h.score > 0.75);
+
+        const moveHand = goodHands.find(h => h.handedness === 'Right') || goodHands[0];
+        if (moveHand) processMovement(moveHand);
+
+        // === 3D HANDS - NOW VISIBLE AND BEAUTIFUL ===
+        if (!isDebugMode) {
+          while (handMeshes.length > goodHands.length) {
+            player.head.remove(handMeshes.pop());
+          }
+          goodHands.forEach((hand, i) => {
+            if (i >= handMeshes.length) {
+              const color = hand.handedness === 'Right' ? 0x00ff88 : 0x8888ff;
+              const mesh = createHandMesh(color);
+              player.head.add(mesh);
+              handMeshes.push(mesh);
+            }
+            updateHandMesh(handMeshes[i], hand.keypoints3D);
+          });
+        }
+
+        // Debug overlay drawing (unchanged - still perfect)
+        if (isDebugMode && overlayCtx) {
+          overlayCtx.clearRect(0, 0, debugOverlay.width, debugOverlay.height);
+          const scale = Math.max(debugOverlay.width / videoElement.videoWidth, debugOverlay.height / videoElement.videoHeight);
+          const offsetX = (debugOverlay.width - videoElement.videoWidth * scale) / 2;
+          const offsetY = (debugOverlay.height - videoElement.videoHeight * scale) / 2;
+
+          for (const hand of goodHands) {
+            const color = hand.handedness === 'Right' ? '#00ff88' : '#8888ff';
+            overlayCtx.strokeStyle = color; overlayCtx.fillStyle = color; overlayCtx.lineWidth = 8;
+            const connections = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17],[0,5]];
+            for (const [a,b] of connections) {
+              const pa = hand.keypoints[a], pb = hand.keypoints[b];
+              overlayCtx.beginPath();
+              overlayCtx.moveTo(offsetX + pa.x * scale, offsetY + pa.y * scale);
+              overlayCtx.lineTo(offsetX + pb.x * scale, offsetY + pb.y * scale);
+              overlayCtx.stroke();
+            }
+            for (const kp of hand.keypoints) {
+              overlayCtx.beginPath();
+              overlayCtx.arc(offsetX + kp.x * scale, offsetY + kp.y * scale, 14, 0, Math.PI*2);
+              overlayCtx.fill();
+            }
+          }
+        }
+
+      } catch(e) { console.error(e); }
+      requestAnimationFrame(detectHands);
+    }
+
+    function initThreeJS() {
+      scene = new THREE.Scene(); scene.background = new THREE.Color(0x87ceeb);
+      const a = innerWidth/innerHeight;
+      leftEye = {camera: new THREE.PerspectiveCamera(75,a,0.1,1000)};
+      rightEye = {camera: new THREE.PerspectiveCamera(75,a,0.1,1000)};
+      leftEye.camera.position.x = -IPD/2; rightEye.camera.position.x = IPD/2;
+      player = {height:1.6, head: new THREE.Object3D()};
+      player.head.position.y = player.height;
+      player.head.add(leftEye.camera); player.head.add(rightEye.camera);
+      scene.add(player.head);
+
+      renderer = new THREE.WebGLRenderer({antialias:true});
+      renderer.setSize(innerWidth, innerHeight); document.body.appendChild(renderer.domElement);
+
+      scene.add(new THREE.AmbientLight(0xffffff,0.7));
+      const light = new THREE.DirectionalLight(0xffffff,0.8);
+      light.position.set(5,10,7); scene.add(light);
+
+      const floor = new THREE.Mesh(new THREE.PlaneGeometry(50,50), new THREE.MeshLambertMaterial({color:0xaaaaaa}));
+      floor.rotation.x = -Math.PI/2; scene.add(floor);
+
+      const cube = new THREE.Mesh(new THREE.BoxGeometry(1,1,1), new THREE.MeshLambertMaterial({color:0xff5555}));
+      cube.position.set(0,0.5,-5); scene.add(cube);
+
+      const animate = () => {
+        if (!isDebugMode) {
+          player.head.quaternion.copy(cameraQuaternion);
+          const h = innerWidth/2;
+          renderer.setViewport(0,0,h,innerHeight); renderer.setScissor(0,0,h,innerHeight); renderer.setScissorTest(true);
+          renderer.render(scene, leftEye.camera);
+          renderer.setViewport(h,0,h,innerHeight); renderer.setScissor(h,0,h,innerHeight);
+          renderer.render(scene, rightEye.camera);
+        }
+        requestAnimationFrame(animate);
+      };
+      animate();
+
+      window.onresize = () => {
+        const a = innerWidth/innerHeight;
+        leftEye.camera.aspect = rightEye.camera.aspect = a;
+        leftEye.camera.updateProjectionMatrix(); rightEye.camera.updateProjectionMatrix();
+        renderer.setSize(innerWidth, innerHeight);
+        if (debugOverlay) { debugOverlay.width = innerWidth; debugOverlay.height = innerHeight; }
+      };
+    }
+
+    window.onload = () => {
+      loadingEl.remove();
+      cameraPrompt.style.display = 'block';
+      document.getElementById('enableCamera').onclick = requestCameraAndMotion;
+    };
+  </script>
+</body>
+</html>
