@@ -3,35 +3,160 @@
 <head>
   <style>
     * { margin: 0; padding: 0; }
-    body { background: black; }
-    video { width: 100vw; height: 100vh; position: fixed; }
+    body { background: black; overflow: hidden; }
+
+    video {
+      width: 100vw;
+      height: 100vh;
+      position: fixed;
+    }
+
     #overlay {
       position: fixed;
       width: 100vw;
       height: 100vh;
-      background: black;
-      color: white;
-      font-size: 48px;
-      font-family: sans-serif;
+      z-index: 10;
+      cursor: none;
+    }
+
+    #text {
+      position: absolute;
+      width: 100%;
+      height: 100%;
       display: flex;
       align-items: center;
       justify-content: center;
-      cursor: none;
-      z-index: 10;
+      color: white;
+      font-size: 48px;
+      font-family: sans-serif;
+      pointer-events: none;
+      text-shadow: 0 0 10px white;
+    }
+
+    canvas {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+    }
+
+    #blackout {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      background: black;
+      opacity: 0;
     }
   </style>
 </head>
 <body>
-  <div id="overlay">Click To Start!</div>
-  <video src="video.mp4"></video>
-  <script>
-    const v = document.querySelector('video');
-    const overlay = document.getElementById('overlay');
 
-    overlay.addEventListener('click', () => {
-      overlay.style.display = 'none';
-      v.play();
-    });
-  </script>
+<div id="overlay">
+  <canvas id="glitchCanvas"></canvas>
+  <div id="blackout"></div>
+  <div id="text"></div>
+</div>
+
+<video src="video.mp4"></video>
+
+<script>
+const canvas = document.getElementById("glitchCanvas");
+const ctx = canvas.getContext("2d");
+const blackout = document.getElementById("blackout");
+const overlay = document.getElementById("overlay");
+const video = document.querySelector("video");
+
+let w, h;
+let running = true;
+
+function resize() {
+  w = canvas.width = window.innerWidth;
+  h = canvas.height = window.innerHeight;
+}
+window.addEventListener("resize", resize);
+resize();
+
+// Generate color static
+function noise() {
+  const img = ctx.createImageData(w, h);
+  const buf = new Uint32Array(img.data.buffer);
+
+  for (let i = 0; i < buf.length; i++) {
+    const r = Math.random() * 255;
+    const g = Math.random() * 255;
+    const b = Math.random() * 255;
+    buf[i] = (255 << 24) | (b << 16) | (g << 8) | r;
+  }
+
+  return img;
+}
+
+// RGB glitch
+function rgbShift(img) {
+  const shift = Math.random() * 10;
+
+  ctx.putImageData(img, 0, 0);
+  ctx.globalCompositeOperation = "lighter";
+  ctx.putImageData(img, shift, 0);
+  ctx.putImageData(img, -shift, 0);
+  ctx.globalCompositeOperation = "source-over";
+}
+
+// Tear effect
+function tear() {
+  const y = Math.random() * h;
+  const height = Math.random() * 60 + 5;
+  const slice = ctx.getImageData(0, y, w, height);
+  const offset = (Math.random() - 0.5) * 300;
+  ctx.putImageData(slice, offset, y);
+}
+
+// Flicker
+function flicker() {
+  ctx.fillStyle = `rgba(0,0,0,${Math.random() * 0.4})`;
+  ctx.fillRect(0, 0, w, h);
+}
+
+// Scanlines
+function scanlines() {
+  ctx.fillStyle = "rgba(0,0,0,0.15)";
+  for (let y = 0; y < h; y += 2) {
+    ctx.fillRect(0, y, w, 1);
+  }
+}
+
+// Blackout flash
+function blackoutFlash() {
+  blackout.style.opacity = 1;
+  setTimeout(() => {
+    blackout.style.opacity = 0;
+  }, Math.random() * 300 + 50);
+}
+
+// Loop
+function loop() {
+  if (!running) return;
+
+  const img = noise();
+  rgbShift(img);
+
+  if (Math.random() < 0.3) tear();
+  if (Math.random() < 0.05) blackoutFlash();
+
+  scanlines();
+  flicker();
+
+  requestAnimationFrame(loop);
+}
+
+loop();
+
+// Click to start
+overlay.addEventListener("click", () => {
+  running = false; // stop glitch loop
+  overlay.style.display = "none";
+  video.play();
+});
+</script>
+
 </body>
 </html>
