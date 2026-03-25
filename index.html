@@ -28,7 +28,7 @@
     const v = document.querySelector('video');
     const overlay = document.getElementById('overlay');
 
-    overlay.addEventListener('click', () => {
+    overlay.addEventListener('keydown', () => {
       overlay.style.display = 'none';
       v.play();
     });
